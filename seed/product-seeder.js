@@ -1,10 +1,17 @@
-var Product = require('../models/product').default;
-
+var Product = require('../models/product');
 var mongoose = require('mongoose');
 
-mongoose.connect('mongodb://localhost:27017/shopping',{ useNewUrlParser: true });
+const options = {
+  useNewUrlParser: true,
+  reconnectTries: 30, // Retry up to 30 times
+  reconnectInterval: 500, // Reconnect every 500ms
+  poolSize: 10, // Maintain up to 10 socket connections
+  // If not connected, return errors immediately rather than waiting for reconnect
+  bufferMaxEntries: 0
+}
 
-var products = [
+
+const products = [
   new Product({
     imagePath: 'https://upload.wikimedia.org/wikipedia/commons/1/14/2018_Tesla_Model_S_75D.jpg',
     title: 'Car',
@@ -42,13 +49,29 @@ var products = [
     price: 18,
   })
 ]
-var done=0;
-for (let i=0; i < products.length; i++){
-  products[i].save(function(err,result) {
-    done++;
-    if (done === products.length) {
-      mongoose.disconnect();
+
+
+const connectWithRetry = () => {
+  console.log('MongoDB connection with retry product')
+  mongoose.connect("mongodb://mongo:27017/shopping", options).then(async ()=>{
+    console.log('MongoDB is connected')
+    var productsCount = await Product.count()
+    console.log("Products Count:"+productsCount);
+    if(!(productsCount > 0)){
+      var done=0;
+      for (let i=0; i < products.length; i++){
+        products[i].save(function(err,result) {
+        done++;
+        if (done === products.length) {
+          mongoose.disconnect();
+        }
+      })
     }
+  }
+  }).catch(err=>{
+    console.log('MongoDB connection unsuccessful, retry after 5 seconds.')
+    setTimeout(connectWithRetry, 5000)
   })
-  
 }
+
+module.exports =  connectWithRetry
